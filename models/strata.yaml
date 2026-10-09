@@ -1,0 +1,24 @@
+# Reference copy: strata-setup.sh writes this file for you, with the run config
+# path that Strata's setup actually produced.
+name: strata
+backend: strata
+parameters:
+  model: strata/Strata/strata-iq2_xs.json
+context_size: 65536
+# Only one of Ridge and Strata fits on the 3090: loading one evicts the other.
+concurrency_groups:
+  - main-llm
+known_usecases:
+  - chat
+# Strata applies its own chat template and parses tool calls and reasoning.
+template:
+  use_tokenizer_template: true
+options:
+  # VRAM left free beside Strata's expert cache. The cache is sized from the VRAM
+  # that is free when Strata starts, so Jarvis (pinned, already loaded) is not
+  # counted here: this is only headroom for Jarvis's spikes while it speaks.
+  - vram_reserve_mib:1500
+  # The first start reads 35-55 GB into RAM; allow it time.
+  - load_timeout:1800
+  # Optional: the thinking level when a request asks for none (none/low/medium/high).
+  # - reasoning_effort:high

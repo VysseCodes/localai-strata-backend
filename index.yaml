@@ -1,0 +1,20 @@
+# A LocalAI backend gallery with one entry. Add its raw URL to
+# LOCALAI_BACKEND_GALLERIES (next to LocalAI's own gallery) and Strata shows up
+# in Operate -> Runtime -> Backends -> Catalog. See README.md.
+- name: "strata"
+  alias: "strata"
+  uri: "ghcr.io/vyssecodes/localai-strata-backend:latest"
+  license: mit
+  urls:
+    - https://github.com/VysseCodes/localai-strata-backend
+    - https://github.com/Niko1221/Strata
+  tags:
+    - text-to-text
+    - LLM
+    - MoE
+  description: |
+    Strata runs Qwen3.8-Flash-Next on one NVIDIA or AMD GPU plus system RAM,
+    keeping the most-used experts in VRAM and the rest in RAM. This backend
+    starts Strata's own OpenAI-compatible server privately and forwards
+    LocalAI's chat requests to it, with reasoning and tool calls.
+    The model is prepared once with Strata's setup (setup/strata-setup.sh).

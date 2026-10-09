@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+backend/python/common/
+backend/python/strata/venv/
+backend/python/strata/common/
+backend/python/strata/backend.proto
+backend/python/strata/backend_pb2*.py
+backend/python/strata/backend_pb2*.pyi

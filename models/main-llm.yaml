@@ -1,0 +1,9 @@
+# The name every client calls. Ridge answers normally; pin the chain to strata
+# for coding sessions, unpin to go back. Ridge and Strata share the main-llm
+# concurrency group, so whichever loads evicts the other. Neither target is
+# `warm`: a warm target is never evicted, which would leave both on the GPU.
+name: main-llm
+failover:
+  targets:
+    - model: qwen3.8-27b-ridge
+    - model: strata

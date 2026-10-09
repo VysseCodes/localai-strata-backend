@@ -1,0 +1,129 @@
+name: Build backend image
+
+# Tests the backend, then builds it into a LocalAI backend image with LocalAI's
+# own backend/Dockerfile.python (the same recipe LocalAI uses for its Python
+# backends) and publishes it to GHCR.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      localai_ref:
+        description: "LocalAI tag or commit to build against (its gRPC protocol and build recipe)"
+        required: false
+        default: ""
+
+env:
+  # The LocalAI release the image is built against. Keep it at the version you run.
+  LOCALAI_REF: ${{ inputs.localai_ref || 'v4.11.0' }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get LocalAI's protocol and backend helpers
+        uses: actions/checkout@v4
+        with:
+          repository: mudler/LocalAI
+          ref: ${{ env.LOCALAI_REF }}
+          path: localai
+          sparse-checkout: |
+            backend/backend.proto
+            backend/python/common
+          sparse-checkout-cone-mode: false
+
+      - name: Get Strata (its server runs with the mock engine in the tests)
+        uses: actions/checkout@v4
+        with:
+          repository: Niko1221/Strata
+          path: strata
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          cp -r localai/backend/python/common backend/python/common
+          python -m pip install grpcio==1.84.0 grpcio-tools protobuf
+          python -m grpc_tools.protoc -I localai/backend \
+            --python_out=backend/python/strata --grpc_python_out=backend/python/strata backend.proto
+          python -m venv strata/.venv
+          strata/.venv/bin/pip install -r strata/requirements.txt
+
+      - name: Test (unit and end-to-end with Strata's mock engine)
+        working-directory: backend/python/strata
+        env:
+          STRATA_DIR: ${{ github.workspace }}/strata
+        run: python -m unittest -v test.py
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Get LocalAI's backend build recipe
+        uses: actions/checkout@v4
+        with:
+          repository: mudler/LocalAI
+          ref: ${{ env.LOCALAI_REF }}
+          path: localai
+
+      - name: Put the backend in LocalAI's tree
+        run: cp -r src/backend/python/strata localai/backend/python/strata
+
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=localai-strata-backend
+            org.opencontainers.image.description=LocalAI backend for Strata (Qwen3.8-Flash-Next)
+            io.localai.version=${{ env.LOCALAI_REF }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: localai
+          file: localai/backend/Dockerfile.python
+          platforms: linux/amd64
+          build-args: |
+            BACKEND=strata
+            BUILD_TYPE=
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
