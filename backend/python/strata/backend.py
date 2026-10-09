@@ -9,10 +9,12 @@ child process, bound to 127.0.0.1 on a free port and protected by a random
 API key, and Predict/PredictStream forward LocalAI's chat requests to it and
 translate the answer back into LocalAI's ChatDelta replies.
 
-The model itself is prepared once, outside LocalAI, with Strata's setup
-(see strata-setup.sh). The LocalAI model YAML points `parameters.model` at
-the run config setup writes (strata-<model>.json), or at the Strata folder
-that holds exactly one of them.
+`parameters.model` in the LocalAI model YAML is one of:
+  - a folder of GGUF shards, as LocalAI's model gallery installs them: the
+    first load prepares the model for this machine with Strata's own setup
+    (prepare.py), later loads use what it wrote
+  - the run config Strata's setup writes (strata-<model>.json), or the Strata
+    folder that holds exactly one, for a model set up by hand
 
 Model YAML `options:` this backend understands (all optional):
   vram_reserve_mib:N   VRAM the engine leaves free for other models (e.g. a
@@ -20,6 +22,12 @@ Model YAML `options:` this backend understands (all optional):
   load_timeout:S       seconds to wait for the model to load (default 1800).
   reasoning_effort:E   default thinking level when a request sets none:
                        none, low, medium or high (Strata's default is high).
+  family:F, quant:Q    the model in a GGUF folder (read from the file names
+                       when not set): qwen/swift/coder/unsloth, IQ2_XS etc.
+  strata_home:DIR      where Strata and its data go (default <models>/strata).
+  strata_ref:REF       the Strata commit or tag to prepare with.
+  prepare_timeout:S    seconds the one-time preparation may take (default 4 h).
+  gpu_backend:B        cuda or hip, when the machine has both kinds of GPU.
   engine:mock          Strata's mock engine, for tests only.
 """
 from concurrent import futures
@@ -27,6 +35,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -45,6 +54,7 @@ import grpc
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'common'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'common'))
 from grpc_auth import get_auth_interceptors  # noqa: E402
+import prepare  # noqa: E402
 
 _ONE_DAY_IN_SECONDS = 60 * 60 * 24
 MAX_WORKERS = int(os.environ.get('PYTHON_GRPC_MAX_WORKERS', '4'))
@@ -90,6 +100,22 @@ def validate_options(opts):
     engine = opts.get("engine")
     if engine is not None and engine not in ("strata", "mock"):
         raise ValueError(f"engine must be strata or mock, not {engine!r}")
+    family = opts.get("family")
+    if family is not None and family not in prepare.FAMILY_TAGS:
+        raise ValueError(f"family must be one of {', '.join(prepare.FAMILY_TAGS)}, not {family!r}")
+    gpu = opts.get("gpu_backend")
+    if gpu is not None and gpu not in ("cuda", "hip", "sycl"):
+        raise ValueError(f"gpu_backend must be cuda, hip or sycl, not {gpu!r}")
+    for key in ("prepare_timeout",):
+        if opts.get(key) is not None:
+            try:
+                if float(opts[key]) <= 0:
+                    raise ValueError
+            except ValueError:
+                raise ValueError(f"{key} must be a positive number of seconds, not {opts[key]!r}") from None
+    ref = opts.get("strata_ref")
+    if ref is not None and not re.fullmatch(r"[A-Za-z0-9._/-]{1,100}", ref):
+        raise ValueError(f"strata_ref must be a commit or tag, not {ref!r}")
     return opts
 
 
@@ -386,6 +412,11 @@ class BackendServicer(backend_pb2_grpc.BackendServicer):
                     if request.ModelPath and not os.path.isabs(ref):
                         ref = os.path.join(request.ModelPath, ref)
                 timeout = float(self.options.get("load_timeout", DEFAULT_LOAD_TIMEOUT_S))
+                if (self.options.get("engine") != "mock" and os.path.isdir(ref)
+                        and prepare.gguf_shards(ref)):
+                    # Installed from the model gallery: the shards are here; the
+                    # machine-specific part of Strata's setup runs on first load.
+                    ref = prepare.prepare(ref, self.options, request.ModelPath, request.ContextSize)
                 server = StrataServer(ref, self.options)
                 try:
                     server.start(timeout)

@@ -1,0 +1,40 @@
+# LocalAI model install for Strata: Qwen3.8-Flash-Next, GSQ-RCO IQ2_XS (~68 GB).
+#
+# LocalAI downloads the two GGUF shards (with progress, resumable) and writes the
+# model config. The first load then prepares the model for the machine with
+# Strata's own setup (engine, expert pack, MTP draft layer: ~5 GB more and
+# 10-20 minutes, once). Needs the strata backend, a 12 GB+ NVIDIA or AMD GPU and
+# ~48 GB of RAM free for the model.
+name: strata-qwen3.8-flash-next-iq2_xs
+description: |
+  Qwen3.8-Flash-Next served by Strata on one GPU plus system RAM: the most-used
+  experts stay in VRAM, the rest in RAM. GSQ-RCO IQ2_XS quantization by ISTA-DASLab.
+  Text only, 64K context. The first load prepares the model for this machine
+  (one time, often 10-20 minutes).
+urls:
+  - https://github.com/VysseCodes/localai-strata-backend
+  - https://github.com/Niko1221/Strata
+  - https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+config_file: |
+  backend: strata
+  parameters:
+    model: strata/models/IQ2_XS
+  context_size: 65536
+  known_usecases:
+    - chat
+  template:
+    use_tokenizer_template: true
+  options:
+    - family:qwen
+    - quant:IQ2_XS
+    # VRAM left free beside Strata's expert cache. The cache is sized from the
+    # VRAM free when Strata starts, so models already loaded are not counted:
+    # this is headroom for others that may still grow (a TTS model, say).
+    - vram_reserve_mib:1500
+    - load_timeout:1800
+files:
+  # Pinned to the revision Strata's setup uses (setup.py HF_REVISIONS).
+  - filename: strata/models/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf
+    uri: https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/resolve/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf
+  - filename: strata/models/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf
+    uri: https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/resolve/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf

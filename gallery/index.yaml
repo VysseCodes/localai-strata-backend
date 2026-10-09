@@ -1,0 +1,19 @@
+# A LocalAI model gallery. Add its raw URL to LOCALAI_GALLERIES (next to
+# LocalAI's own) and the models show up in the Models catalog. See README.md.
+- name: strata-qwen3.8-flash-next-iq2_xs
+  url: github:VysseCodes/localai-strata-backend/gallery/strata-qwen3.8-flash-next-iq2_xs.yaml@main
+  size: "68GB"
+  license: other
+  tags:
+    - llm
+    - gguf
+    - gpu
+    - moe
+    - strata
+  urls:
+    - https://github.com/VysseCodes/localai-strata-backend
+    - https://github.com/Niko1221/Strata
+  description: |
+    Qwen3.8-Flash-Next served by Strata on one GPU plus system RAM (GSQ-RCO IQ2_XS,
+    ~68 GB). Needs the strata backend, a 12 GB+ GPU and ~48 GB of RAM. The first load
+    prepares the model for this machine (one time, often 10-20 minutes).
